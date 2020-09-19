@@ -64,9 +64,9 @@ def prepare_dataloaders_old(hparams):
 
 def prepare_dataloaders(hparams):
     # set misc options
-    trainset = ConcatDataset([get_dataset(xx, hparams.dbroot, which_set='train') 
+    trainset = ConcatDataset([get_dataset(xx, which_set='train') 
         for xx in hparams.data])
-    valset = ConcatDataset([get_dataset(xx, hparams.dbroot, which_set='val') 
+    valset = ConcatDataset([get_dataset(xx, which_set='val') 
         for xx in hparams.data])
 
     if hparams.distributed_run:
