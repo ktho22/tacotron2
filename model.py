@@ -5,6 +5,7 @@ from torch import nn
 from torch.nn import functional as F
 from layers import ConvNorm, LinearNorm
 from utils import to_gpu, get_mask_from_lengths
+from encoder import EncoderRNN
 
 
 class LocationLayer(nn.Module):
@@ -466,6 +467,11 @@ class Tacotron2(nn.Module):
         std = sqrt(2.0 / (hparams.n_symbols + hparams.symbols_embedding_dim))
         val = sqrt(3.0) * std  # uniform bounds for std
         self.embedding.weight.data.uniform_(-val, val)
+
+        self.contents_enc = EncoderRNN(80, 128, 2, emb_type='raw')
+        self.style_enc = EncoderRNN(80, 32, 2)
+        self.linear_enc = nn.Linear(2 * 128, 2 * 128, bias=False)
+
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
         self.postnet = Postnet(hparams)
@@ -500,8 +506,23 @@ class Tacotron2(nn.Module):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
-        embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
+        if torch.is_tensor(contents_mel):
+            contents_len = contents_mel_len
+            enc_output = self.contents_enc(contents_mel, contents_mel_len)
+            in_attW_enc = rnn.pack_padded_sequence(enc_output, contents_mel_len, True)
+        elif torch.is_tensor(txt):
+            contents_len = txt_len
+            enc_output = self.encoder(txt, txt_len)
+            in_attW_enc = rnn.pack_padded_sequence(enc_output, txt_len, True)
+        in_attW_enc = self.linear_enc(in_attW_enc.data)
 
+        # style enc
+        self.style_vec = self.style_enc(style_mel, style_mel_len)
+
+        import ipdb
+        ipdb.set_trace()
+
+        embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
         encoder_outputs = self.encoder(embedded_inputs, text_lengths)
 
         mel_outputs, gate_outputs, alignments = self.decoder(

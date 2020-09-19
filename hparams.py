@@ -44,6 +44,16 @@ def create_hparams(hparams_string=None, verbose=False):
         ################################
         # Model Parameters             #
         ################################
+        
+        gender_num=2,
+        age_num=4,
+        emotion_num=7,
+        vocab_dict={},
+        vocab_size=0,
+        spkr_lu={},
+        dbroot='',
+        data=['KETTS_male'],
+
         n_symbols=len(symbols),
         symbols_embedding_dim=512,
 

@@ -8,13 +8,16 @@ import torch
 from distributed import apply_gradient_allreduce
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 
 from model import Tacotron2
 from data_utils import TextMelLoader, TextMelCollate
+from collate_fn import collate_class
 from loss_function import Tacotron2Loss
 from logger import Tacotron2Logger
 from hparams import create_hparams
+from dataset.get_dataset import get_dataset
+
 
 
 def reduce_tensor(tensor, n_gpus):
@@ -39,7 +42,7 @@ def init_distributed(hparams, n_gpus, rank, group_name):
     print("Done initializing distributed")
 
 
-def prepare_dataloaders(hparams):
+def prepare_dataloaders_old(hparams):
     # Get data, data loaders and collate function ready
     trainset = TextMelLoader(hparams.training_files, hparams)
     valset = TextMelLoader(hparams.validation_files, hparams)
@@ -56,6 +59,46 @@ def prepare_dataloaders(hparams):
                               sampler=train_sampler,
                               batch_size=hparams.batch_size, pin_memory=False,
                               drop_last=True, collate_fn=collate_fn)
+    return train_loader, valset, collate_fn
+
+
+def prepare_dataloaders(hparams):
+    # set misc options
+    trainset = ConcatDataset([get_dataset(xx, hparams.dbroot, which_set='train') 
+        for xx in hparams.data])
+    valset = ConcatDataset([get_dataset(xx, hparams.dbroot, which_set='val') 
+        for xx in hparams.data])
+
+    if hparams.distributed_run:
+        train_sampler = DistributedSampler(trainset)
+        shuffle = False
+    else:
+        train_sampler = None
+        shuffle = True
+
+    collate_fn = collate_class(contents_ratio=0.5, style_ratio=1)
+    train_loader = DataLoader(trainset, sampler=train_sampler, 
+                        num_workers=1, batch_size=hparams.batch_size,
+                        shuffle=shuffle, pin_memory=False, 
+                        collate_fn=collate_fn, drop_last=True)
+
+    for dataset_name in dataset.datasets:
+        keys = dataset_name.vocab_dict.keys()
+        for k in keys:
+            if k not in hparams.vocab_dict.keys():
+                hparams.vocab_dict[k] = len(hparams.vocab_dict)
+
+        spkrs = dataset_name.spkr_lu.keys()
+        for spkr in spkrs:
+            if spkr not in hparams.spkr_lu:
+                hparams.spkr_lu[spkr] = len(hparams.spkr_lu)
+
+    hparams.vocab_size = len(hparams.vocab_dict)
+
+    for dataset_name in dataset.datasets:
+        dataset_name.set_vocab_dict(hparams.vocab_dict)
+        dataset_name.set_spkr_lu(hparams.spkr_lu)
+
     return train_loader, valset, collate_fn
 
 
@@ -183,7 +226,10 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     logger = prepare_directories_and_logger(
         output_directory, log_directory, rank)
 
+    #train_loader, valset, collate_fn = prepare_dataloaders_old(hparams)
     train_loader, valset, collate_fn = prepare_dataloaders(hparams)
+    import ipdb
+    ipdb.set_trace()
 
     # Load checkpoint if one exists
     iteration = 0
@@ -257,9 +303,9 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--output_directory', type=str,
+    parser.add_argument('-o', '--output_directory', type=str, default='outdir',
                         help='directory to save checkpoints')
-    parser.add_argument('-l', '--log_directory', type=str,
+    parser.add_argument('-l', '--log_directory', type=str, default='test',
                         help='directory to save tensorboard logs')
     parser.add_argument('-c', '--checkpoint_path', type=str, default=None,
                         required=False, help='checkpoint path')
