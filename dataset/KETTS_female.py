@@ -7,7 +7,7 @@ import pickle as pkl
 from random import random
 
 class KETTS_30f(data.Dataset):
-    def __init__(self, which_set='train', datapath='/home/thkim/data/KETTS/30f_bin', mismatch_style=True, mismatch_contents=True):
+    def __init__(self, which_set='train', datapath='/home/thkim/data/KETTS/30f_bin_22050', mismatch_style=True, mismatch_contents=True):
         '''
         mismatch_style means sampling style_wav of which contents is different from that of target_wav
         mismatch_contents means sampling style_wav of which style is different from that of target_wav
@@ -24,11 +24,11 @@ class KETTS_30f(data.Dataset):
         self.mellist = np.sort(glob(datapath+'/*.mel'))
 
         if which_set == 'train':
-            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) < 2900]
-            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) < 2900]
+            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) < 2990]
+            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) < 2990]
         elif which_set == 'val':
-            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) >= 2900]
-            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) >= 2900]
+            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) >= 2990]
+            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) >= 2990]
         else:
             raise ValueError
         
@@ -55,7 +55,7 @@ class KETTS_30f(data.Dataset):
         # Mel/Lin read
         mellin = pkl.load(open(self.mellist[idx], 'rb'))
         mel = mellin['mel']
-        lin = mellin['lin']
+        #lin = mellin['lin']
 
         target_mel_name = basename(self.mellist[idx])
         emo = target_mel_name.split('_')[-2]
@@ -85,7 +85,7 @@ class KETTS_30f(data.Dataset):
 
         return {'txt': np.asarray(txt_feat), 
                 'style': style, 
-                'target_lin': np.asarray(lin), 
+                #'target_lin': np.asarray(lin), 
                 'target_mel': np.asarray(mel),
                 'style_mel': np.asarray(style_mel),
                 'contents_mel': np.asarray(contents_mel),

@@ -5,7 +5,9 @@ from torch import nn
 from torch.nn import functional as F
 from layers import ConvNorm, LinearNorm
 from utils import to_gpu, get_mask_from_lengths
-from encoder import EncoderRNN
+from encoder_rnn import EncoderRNN
+import torch.nn.utils.rnn as rnn
+import random
 
 
 class LocationLayer(nn.Module):
@@ -180,7 +182,7 @@ class Encoder(nn.Module):
         # pytorch tensor are not reversible, hence the conversion
         input_lengths = input_lengths.cpu().numpy()
         x = nn.utils.rnn.pack_padded_sequence(
-            x, input_lengths, batch_first=True)
+            x, input_lengths, batch_first=True, enforce_sorted=False)
 
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)
@@ -221,7 +223,7 @@ class Decoder(nn.Module):
             [hparams.prenet_dim, hparams.prenet_dim])
 
         self.attention_rnn = nn.LSTMCell(
-            hparams.prenet_dim + hparams.encoder_embedding_dim,
+            hparams.prenet_dim + hparams.encoder_embedding_dim + hparams.style_embedding_dim,
             hparams.attention_rnn_dim)
 
         self.attention_layer = Attention(
@@ -230,7 +232,7 @@ class Decoder(nn.Module):
             hparams.attention_location_kernel_size)
 
         self.decoder_rnn = nn.LSTMCell(
-            hparams.attention_rnn_dim + hparams.encoder_embedding_dim,
+            hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.style_embedding_dim,
             hparams.decoder_rnn_dim, 1)
 
         self.linear_projection = LinearNorm(
@@ -338,7 +340,7 @@ class Decoder(nn.Module):
 
         return mel_outputs, gate_outputs, alignments
 
-    def decode(self, decoder_input):
+    def decode(self, decoder_input, style_vec):
         """ Decoder step using stored states, attention and memory
         PARAMS
         ------
@@ -350,7 +352,7 @@ class Decoder(nn.Module):
         gate_output: gate output energies
         attention_weights:
         """
-        cell_input = torch.cat((decoder_input, self.attention_context), -1)
+        cell_input = torch.cat((decoder_input, self.attention_context, style_vec), -1)
         self.attention_hidden, self.attention_cell = self.attention_rnn(
             cell_input, (self.attention_hidden, self.attention_cell))
         self.attention_hidden = F.dropout(
@@ -365,7 +367,7 @@ class Decoder(nn.Module):
 
         self.attention_weights_cum += self.attention_weights
         decoder_input = torch.cat(
-            (self.attention_hidden, self.attention_context), -1)
+            (self.attention_hidden, self.attention_context, style_vec), -1)
         self.decoder_hidden, self.decoder_cell = self.decoder_rnn(
             decoder_input, (self.decoder_hidden, self.decoder_cell))
         self.decoder_hidden = F.dropout(
@@ -379,7 +381,7 @@ class Decoder(nn.Module):
         gate_prediction = self.gate_layer(decoder_hidden_attention_context)
         return decoder_output, gate_prediction, self.attention_weights
 
-    def forward(self, memory, decoder_inputs, memory_lengths):
+    def forward(self, memory, style_vec, decoder_inputs, memory_lengths):
         """ Decoder forward pass for training
         PARAMS
         ------
@@ -406,7 +408,7 @@ class Decoder(nn.Module):
         while len(mel_outputs) < decoder_inputs.size(0) - 1:
             decoder_input = decoder_inputs[len(mel_outputs)]
             mel_output, gate_output, attention_weights = self.decode(
-                decoder_input)
+                decoder_input, style_vec)
             mel_outputs += [mel_output.squeeze(1)]
             gate_outputs += [gate_output.squeeze(1)]
             alignments += [attention_weights]
@@ -458,6 +460,8 @@ class Decoder(nn.Module):
 class Tacotron2(nn.Module):
     def __init__(self, hparams):
         super(Tacotron2, self).__init__()
+        self.style_switch_prob = hparams.style_switch_prob
+        self.contents_switch_prob = hparams.contents_switch_prob
         self.mask_padding = hparams.mask_padding
         self.fp16_run = hparams.fp16_run
         self.n_mel_channels = hparams.n_mel_channels
@@ -468,27 +472,20 @@ class Tacotron2(nn.Module):
         val = sqrt(3.0) * std  # uniform bounds for std
         self.embedding.weight.data.uniform_(-val, val)
 
-        self.contents_enc = EncoderRNN(80, 128, 2, emb_type='raw')
-        self.style_enc = EncoderRNN(80, 32, 2)
-        self.linear_enc = nn.Linear(2 * 128, 2 * 128, bias=False)
+        self.contents_enc = EncoderRNN(hparams.n_mel_channels, hparams.symbols_embedding_dim//2, 2, emb_type='raw')
+        self.style_enc = EncoderRNN(hparams.n_mel_channels, hparams.style_embedding_dim, 2)
+        self.linear_enc = nn.Linear(hparams.symbols_embedding_dim, hparams.symbols_embedding_dim, bias=False)
 
         self.encoder = Encoder(hparams)
         self.decoder = Decoder(hparams)
         self.postnet = Postnet(hparams)
 
     def parse_batch(self, batch):
-        text_padded, input_lengths, mel_padded, gate_padded, \
-            output_lengths = batch
-        text_padded = to_gpu(text_padded).long()
-        input_lengths = to_gpu(input_lengths).long()
-        max_len = torch.max(input_lengths.data).item()
-        mel_padded = to_gpu(mel_padded).float()
-        gate_padded = to_gpu(gate_padded).float()
-        output_lengths = to_gpu(output_lengths).long()
+        for k, v in batch.items():
+            if not k == 'filename':
+                batch[k] = v.cuda()
 
-        return (
-            (text_padded, input_lengths, mel_padded, max_len, output_lengths),
-            (mel_padded, gate_padded))
+        return (batch, (batch['target_mel'], batch['gate_padded']))
 
     def parse_output(self, outputs, output_lengths=None):
         if self.mask_padding and output_lengths is not None:
@@ -502,31 +499,36 @@ class Tacotron2(nn.Module):
 
         return outputs
 
-    def forward(self, inputs):
-        text_inputs, text_lengths, mels, max_len, output_lengths = inputs
+    def forward(self, target_mel, target_mel_len,
+            contents_mel, contents_mel_len,
+            style_mel, style_mel_len,
+            txt, txt_len,
+            gender, age, emotion, spkr, 
+            spkemb, gate_padded, filename):
+
+        # Change variable name to Tacotron2 implementation.
+        text_inputs = txt
+        text_lengths = txt_len
+        mels = target_mel
+        max_len = int(target_mel.shape[1])
+        output_lengths = target_mel_len
+
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
-        if torch.is_tensor(contents_mel):
+        if self.contents_switch_prob > random.random():
             contents_len = contents_mel_len
-            enc_output = self.contents_enc(contents_mel, contents_mel_len)
-            in_attW_enc = rnn.pack_padded_sequence(enc_output, contents_mel_len, True)
-        elif torch.is_tensor(txt):
+            encoder_outputs = self.contents_enc(contents_mel, contents_mel_len)
+        else:
             contents_len = txt_len
-            enc_output = self.encoder(txt, txt_len)
-            in_attW_enc = rnn.pack_padded_sequence(enc_output, txt_len, True)
-        in_attW_enc = self.linear_enc(in_attW_enc.data)
+            txt = self.embedding(txt).transpose(1, 2)
+            encoder_outputs = self.encoder(txt, txt_len)
 
         # style enc
         self.style_vec = self.style_enc(style_mel, style_mel_len)
-
-        import ipdb
-        ipdb.set_trace()
-
-        embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
-        encoder_outputs = self.encoder(embedded_inputs, text_lengths)
+        self.style_vec = self.style_vec.squeeze()
 
         mel_outputs, gate_outputs, alignments = self.decoder(
-            encoder_outputs, mels, memory_lengths=text_lengths)
+            encoder_outputs, self.style_vec, mels, memory_lengths=text_lengths)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet

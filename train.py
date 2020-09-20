@@ -41,27 +41,6 @@ def init_distributed(hparams, n_gpus, rank, group_name):
 
     print("Done initializing distributed")
 
-
-def prepare_dataloaders_old(hparams):
-    # Get data, data loaders and collate function ready
-    trainset = TextMelLoader(hparams.training_files, hparams)
-    valset = TextMelLoader(hparams.validation_files, hparams)
-    collate_fn = TextMelCollate(hparams.n_frames_per_step)
-
-    if hparams.distributed_run:
-        train_sampler = DistributedSampler(trainset)
-        shuffle = False
-    else:
-        train_sampler = None
-        shuffle = True
-
-    train_loader = DataLoader(trainset, num_workers=1, shuffle=shuffle,
-                              sampler=train_sampler,
-                              batch_size=hparams.batch_size, pin_memory=False,
-                              drop_last=True, collate_fn=collate_fn)
-    return train_loader, valset, collate_fn
-
-
 def prepare_dataloaders(hparams):
     # set misc options
     trainset = ConcatDataset([get_dataset(xx, which_set='train') 
@@ -76,13 +55,14 @@ def prepare_dataloaders(hparams):
         train_sampler = None
         shuffle = True
 
-    collate_fn = collate_class(contents_ratio=0.5, style_ratio=1)
+    collate_fn = collate_class()
+
     train_loader = DataLoader(trainset, sampler=train_sampler, 
                         num_workers=1, batch_size=hparams.batch_size,
                         shuffle=shuffle, pin_memory=False, 
                         collate_fn=collate_fn, drop_last=True)
 
-    for dataset_name in dataset.datasets:
+    for dataset_name in trainset.datasets:
         keys = dataset_name.vocab_dict.keys()
         for k in keys:
             if k not in hparams.vocab_dict.keys():
@@ -95,7 +75,7 @@ def prepare_dataloaders(hparams):
 
     hparams.vocab_size = len(hparams.vocab_dict)
 
-    for dataset_name in dataset.datasets:
+    for dataset_name in trainset.datasets:
         dataset_name.set_vocab_dict(hparams.vocab_dict)
         dataset_name.set_spkr_lu(hparams.spkr_lu)
 
@@ -174,7 +154,7 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
         val_loss = 0.0
         for i, batch in enumerate(val_loader):
             x, y = model.parse_batch(batch)
-            y_pred = model(x)
+            y_pred = model(**x)
             loss = criterion(y_pred, y)
             if distributed_run:
                 reduced_val_loss = reduce_tensor(loss.data, n_gpus).item()
@@ -213,6 +193,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                  weight_decay=hparams.weight_decay)
 
+    train_loader, valset, collate_fn = prepare_dataloaders(hparams)
+
     if hparams.fp16_run:
         from apex import amp
         model, optimizer = amp.initialize(
@@ -225,11 +207,6 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
     logger = prepare_directories_and_logger(
         output_directory, log_directory, rank)
-
-    #train_loader, valset, collate_fn = prepare_dataloaders_old(hparams)
-    train_loader, valset, collate_fn = prepare_dataloaders(hparams)
-    import ipdb
-    ipdb.set_trace()
 
     # Load checkpoint if one exists
     iteration = 0
@@ -258,7 +235,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
             model.zero_grad()
             x, y = model.parse_batch(batch)
-            y_pred = model(x)
+            y_pred = model(**x)
 
             loss = criterion(y_pred, y)
             if hparams.distributed_run:

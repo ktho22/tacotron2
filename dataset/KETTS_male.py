@@ -7,7 +7,7 @@ import pickle as pkl
 from random import random
 
 class KETTS_30m(data.Dataset):
-    def __init__(self, which_set='train', datapath='/home/thkim/data/KETTS/30m_bin'):
+    def __init__(self, which_set='train', datapath='/home/thkim/data/KETTS/30m_bin_22050'):
         # Load vocabulary
         vocab_path = datapath + '/vocab_dict.pkl'
         self.vocab_dict = pkl.load(open(vocab_path, 'rb'))
@@ -20,11 +20,11 @@ class KETTS_30m(data.Dataset):
         self.mellist = [xx for xx in self.mellist if not '00432' in xx and not '00480' in xx]
 
         if which_set == 'train':
-            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) < 2900]
-            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) < 2900]
+            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) < 2990]
+            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) < 2990]
         elif which_set == 'val':
-            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) >= 2900]
-            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) >= 2900]
+            self.txtlist = [xx for xx in self.txtlist if int(xx.split('_')[-1][:-4]) >= 2990]
+            self.mellist = [xx for xx in self.mellist if int(xx.split('_')[-1][:-4]) >= 2990]
         else:
             raise ValueError
         
@@ -52,7 +52,7 @@ class KETTS_30m(data.Dataset):
         # Mel/Lin read
         mellin = pkl.load(open(self.mellist[idx], 'rb'))
         mel = mellin['mel']
-        lin = mellin['lin']
+        #lin = mellin['lin']
 
         #contents_mel_path = self.mellist[idx]
         mel_emo = basename(self.mellist[idx])[:3]
@@ -64,25 +64,25 @@ class KETTS_30m(data.Dataset):
             if exists(contents_mel_path):
                 break
 
-        #ref_mel_path = self.mellist[idx]
+        #style_mel_path = self.mellist[idx]
         while True:
             sent_no = '{:05d}'.format(np.random.randint(3000))
-            ref_mel_path = self.mellist[idx]
-            ref_mel_path = ref_mel_path.replace(ref_mel_path[-9:-4], sent_no)
-            if exists(ref_mel_path):
+            style_mel_path = self.mellist[idx]
+            style_mel_path = style_mel_path.replace(style_mel_path[-9:-4], sent_no)
+            if exists(style_mel_path):
                 break
 
         contents_mel = pkl.load(open(contents_mel_path, 'rb'))['mel']
-        style_mel = pkl.load(open(ref_mel_path, 'rb'))['mel']
+        style_mel = pkl.load(open(style_mel_path, 'rb'))['mel']
         style = self.getstyle(self.txtlist[idx])
 
         return {'txt': np.asarray(txt_feat), 
                 'style': style, 
-                'target_lin': np.asarray(lin), 
+                #'target_lin': np.asarray(lin), 
                 'target_mel': np.asarray(mel),
                 'style_mel': np.asarray(style_mel),
                 'contents_mel': np.asarray(contents_mel),
-                'filename': {'target':self.mellist[idx], 'ref':ref_mel_path, 'input':contents_mel_path}
+                'filename': {'target':self.mellist[idx], 'style':style_mel_path, 'contents':contents_mel_path}
                 }
 
     def getstyle(self, filename):

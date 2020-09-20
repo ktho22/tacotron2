@@ -44,12 +44,12 @@ class ETRI(data.Dataset):
         # Mel/Lin read
         mellin = pkl.load(open(self.mellist[idx], 'rb'))
         mel = mellin['mel']
-        lin = mellin['lin']
+        #lin = mellin['lin']
         style = self.getstyle(self.txtlist[idx])
 
         return {'txt': np.asarray(txt_feat), 
                 'style': style, 
-                'target_lin': np.asarray(lin), 
+                #'target_lin': np.asarray(lin), 
                 'target_mel': np.asarray(mel),
                 'filename': {'target':self.mellist[idx]}
                 }

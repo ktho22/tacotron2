@@ -45,6 +45,8 @@ def create_hparams(hparams_string=None, verbose=False):
         # Model Parameters             #
         ################################
         
+        style_switch_prob=1, # higher for continuous value (i.e., mel)
+        contents_switch_prob=0.5, # higher for continuous value (i.e., mel)
         gender_num=2,
         age_num=4,
         emotion_num=7,
@@ -52,10 +54,11 @@ def create_hparams(hparams_string=None, verbose=False):
         vocab_size=0,
         spkr_lu={},
         dbroot='',
-        data=['KETTS_male'],
+        data=['KETTS_male', 'KETTS_female', 'KNTTS', 'ETRI', 'KETTS76'],
 
         n_symbols=len(symbols),
         symbols_embedding_dim=512,
+        style_embedding_dim=32,
 
         # Encoder parameters
         encoder_kernel_size=5,
@@ -91,7 +94,7 @@ def create_hparams(hparams_string=None, verbose=False):
         learning_rate=1e-3,
         weight_decay=1e-6,
         grad_clip_thresh=1.0,
-        batch_size=64,
+        batch_size=25,
         mask_padding=True  # set model's padded outputs to padded values
     )
 
