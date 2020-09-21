@@ -528,7 +528,7 @@ class Tacotron2(nn.Module):
         self.style_vec = self.style_vec.squeeze()
 
         mel_outputs, gate_outputs, alignments = self.decoder(
-            encoder_outputs, self.style_vec, mels, memory_lengths=text_lengths)
+            encoder_outputs, self.style_vec, mels, memory_lengths=contents_len)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
