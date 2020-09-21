@@ -525,7 +525,7 @@ class Tacotron2(nn.Module):
 
         # style enc
         self.style_vec = self.style_enc(style_mel, style_mel_len)
-        self.style_vec = self.style_vec.squeeze()
+        self.style_vec = self.style_vec.squeeze(1)
 
         mel_outputs, gate_outputs, alignments = self.decoder(
             encoder_outputs, self.style_vec, mels, memory_lengths=contents_len)

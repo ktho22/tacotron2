@@ -11,13 +11,15 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader, ConcatDataset
 
 from model import Tacotron2
+from utils import set_savepath
 from data_utils import TextMelLoader, TextMelCollate
 from collate_fn import collate_class
 from loss_function import Tacotron2Loss
-from logger import Tacotron2Logger
+from logger import Tacotron2Logger, WandbLogger 
 from hparams import create_hparams
 from dataset.get_dataset import get_dataset
 from tqdm import tqdm
+import wandb
 
 
 
@@ -143,7 +145,7 @@ def save_checkpoint(model, optimizer, learning_rate, iteration, filepath):
 
 
 def validate(model, criterion, valset, iteration, batch_size, n_gpus,
-             collate_fn, logger, distributed_run, rank):
+             collate_fn, logger, wandb_logger, distributed_run, rank):
     """Handles all the validation scoring and printing"""
     model.eval()
     with torch.no_grad():
@@ -168,6 +170,8 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
     if rank == 0:
         print("Validation loss {}: {:9f}  ".format(iteration, val_loss))
         logger.log_validation(val_loss, model, y, y_pred, iteration)
+        wandb_logger.log_validation(
+            val_loss, model, y, y_pred, iteration)
 
 
 def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
@@ -190,6 +194,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     torch.cuda.manual_seed(hparams.seed)
 
     model = load_model(hparams)
+    print('model loaded')
     learning_rate = hparams.learning_rate
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                  weight_decay=hparams.weight_decay)
@@ -208,6 +213,11 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
     logger = prepare_directories_and_logger(
         output_directory, log_directory, rank)
+
+    if hparams.message == 'dryrun':
+        os.environ['WANDB_MODE'] = 'dryrun'
+
+    wandb_logger = WandbLogger(hparams, model)
 
     # Load checkpoint if one exists
     iteration = 0
@@ -265,11 +275,13 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                     iteration, reduced_loss, grad_norm, duration))
                 logger.log_training(
                     reduced_loss, grad_norm, learning_rate, duration, iteration)
+                wandb_logger.log_training(
+                    reduced_loss, grad_norm, learning_rate, duration, iteration)
 
             if not is_overflow and (iteration % hparams.iters_per_checkpoint == 0):
                 validate(model, criterion, valset, iteration,
                          hparams.batch_size, n_gpus, collate_fn, logger,
-                         hparams.distributed_run, rank)
+                         wandb_logger, hparams.distributed_run, rank)
                 if rank == 0:
                     checkpoint_path = os.path.join(
                         output_directory, "checkpoint_{}".format(iteration))
@@ -281,8 +293,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--output_directory', type=str,
-                        help='directory to save checkpoints')
+    parser.add_argument('-m', '--message', type=str,
+                        help='the title of the run')
     parser.add_argument('-l', '--log_directory', type=str, default ='logs',
                         help='directory to save tensorboard logs')
     parser.add_argument('-c', '--checkpoint_path', type=str, default=None,
@@ -290,6 +302,8 @@ if __name__ == '__main__':
     parser.add_argument('--warm_start', action='store_true',
                         help='load model weights only, ignore specified layers')
     parser.add_argument('--n_gpus', type=int, default=1,
+                        required=False, help='number of gpus')
+    parser.add_argument('-g', '--gpu', type=int,
                         required=False, help='number of gpus')
     parser.add_argument('--rank', type=int, default=0,
                         required=False, help='rank of current gpu')
@@ -299,10 +313,12 @@ if __name__ == '__main__':
                         required=False, help='comma separated name=value pairs')
 
     args = parser.parse_args()
-    args.output_directory = set_savepath(args.output_directory)
+    args.output_directory = set_savepath(args.message)
     hparams = create_hparams(args.hparams)
+    hparams.message = args.message
 
-    savepath = set_savepath(args.output_directory)
+    if args.gpu:
+        torch.cuda.set_device(args.gpu)
 
     torch.backends.cudnn.enabled = hparams.cudnn_enabled
     torch.backends.cudnn.benchmark = hparams.cudnn_benchmark

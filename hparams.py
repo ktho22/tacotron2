@@ -1,5 +1,6 @@
 import tensorflow as tf
 from text import symbols
+from pprint import pprint
 
 
 def create_hparams(hparams_string=None, verbose=True):
@@ -9,6 +10,7 @@ def create_hparams(hparams_string=None, verbose=True):
         ################################
         # Experiment Parameters        #
         ################################
+        project_name='semiVCTTS',
         epochs=500,
         iters_per_checkpoint=1000,
         seed=1234,
@@ -34,9 +36,9 @@ def create_hparams(hparams_string=None, verbose=True):
         ################################
         max_wav_value=32768.0,
         sampling_rate=22050,
-        filter_length=1024,
-        hop_length=256,
-        win_length=1024,
+        filter_length=2048,
+        hop_length=276,
+        win_length=1103,
         n_mel_channels=80,
         mel_fmin=0.0,
         mel_fmax=8000.0,
@@ -46,7 +48,7 @@ def create_hparams(hparams_string=None, verbose=True):
         ################################
         
         style_switch_prob=1, # higher for continuous value (i.e., mel)
-        contents_switch_prob=0, # higher for continuous value (i.e., mel)
+        contents_switch_prob=0.5, # higher for continuous value (i.e., mel)
         gender_num=2,
         age_num=4,
         emotion_num=7,
@@ -94,15 +96,14 @@ def create_hparams(hparams_string=None, verbose=True):
         learning_rate=1e-3,
         weight_decay=1e-6,
         grad_clip_thresh=1.0,
-        batch_size=25,
+        batch_size=10,
         mask_padding=True  # set model's padded outputs to padded values
     )
 
     if hparams_string:
-        tf.logging.info('Parsing command line hparams: %s', hparams_string)
         hparams.parse(hparams_string)
 
     if verbose:
-        tf.logging.info('Final parsed hparams: %s', hparams.values())
+        pprint(hparams.values())
 
     return hparams
