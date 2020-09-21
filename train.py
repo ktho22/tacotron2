@@ -17,6 +17,7 @@ from loss_function import Tacotron2Loss
 from logger import Tacotron2Logger
 from hparams import create_hparams
 from dataset.get_dataset import get_dataset
+from tqdm import tqdm
 
 
 
@@ -58,7 +59,7 @@ def prepare_dataloaders(hparams):
     collate_fn = collate_class()
 
     train_loader = DataLoader(trainset, sampler=train_sampler, 
-                        num_workers=1, batch_size=hparams.batch_size,
+                        num_workers=4, batch_size=hparams.batch_size,
                         shuffle=shuffle, pin_memory=False, 
                         collate_fn=collate_fn, drop_last=True)
 
@@ -152,7 +153,7 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
                                 pin_memory=False, collate_fn=collate_fn)
 
         val_loss = 0.0
-        for i, batch in enumerate(val_loader):
+        for i, batch in tqdm(enumerate(val_loader)):
             x, y = model.parse_batch(batch)
             y_pred = model(**x)
             loss = criterion(y_pred, y)
@@ -280,9 +281,9 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-o', '--output_directory', type=str, default='outdir',
+    parser.add_argument('-o', '--output_directory', type=str,
                         help='directory to save checkpoints')
-    parser.add_argument('-l', '--log_directory', type=str, default='test',
+    parser.add_argument('-l', '--log_directory', type=str, default ='logs',
                         help='directory to save tensorboard logs')
     parser.add_argument('-c', '--checkpoint_path', type=str, default=None,
                         required=False, help='checkpoint path')
@@ -298,7 +299,10 @@ if __name__ == '__main__':
                         required=False, help='comma separated name=value pairs')
 
     args = parser.parse_args()
+    args.output_directory = set_savepath(args.output_directory)
     hparams = create_hparams(args.hparams)
+
+    savepath = set_savepath(args.output_directory)
 
     torch.backends.cudnn.enabled = hparams.cudnn_enabled
     torch.backends.cudnn.benchmark = hparams.cudnn_benchmark

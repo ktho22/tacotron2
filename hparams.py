@@ -2,7 +2,7 @@ import tensorflow as tf
 from text import symbols
 
 
-def create_hparams(hparams_string=None, verbose=False):
+def create_hparams(hparams_string=None, verbose=True):
     """Create model hyperparameters. Parse nondefault from given string."""
 
     hparams = tf.contrib.training.HParams(
@@ -46,7 +46,7 @@ def create_hparams(hparams_string=None, verbose=False):
         ################################
         
         style_switch_prob=1, # higher for continuous value (i.e., mel)
-        contents_switch_prob=0.5, # higher for continuous value (i.e., mel)
+        contents_switch_prob=0, # higher for continuous value (i.e., mel)
         gender_num=2,
         age_num=4,
         emotion_num=7,

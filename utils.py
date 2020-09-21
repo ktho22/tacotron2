@@ -1,6 +1,9 @@
 import numpy as np
 from scipy.io.wavfile import read
 import torch
+import time
+import os
+from os.path import join, exists
 
 
 def get_mask_from_lengths(lengths):
@@ -27,3 +30,17 @@ def to_gpu(x):
     if torch.cuda.is_available():
         x = x.cuda(non_blocking=True)
     return torch.autograd.Variable(x)
+
+def set_savepath(message):
+    today = time.strftime('%y%m%d')
+    savepath = join('result', '{}_{}'.format(today, message))
+    if not exists(savepath):
+        os.makedirs(savepath)
+    elif message=='test':
+        os.system("rm -rf {}/*".format(savepath))
+    else:
+        input("Path already exists, wish to continue?")
+        os.system("rm -rf {}/*".format(savepath))
+        os.system('cp -r *.py dataset {}'.format(savepath))
+    return savepath
+

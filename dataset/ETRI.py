@@ -18,6 +18,16 @@ class ETRI(data.Dataset):
         # Filelist 
         self.txtlist = np.sort(glob(datapath+'/bin/*.txt'))
         self.mellist = np.sort(glob(datapath+'/bin/*.mel'))
+
+        if which_set == 'train':
+            self.txtlist = self.txtlist[:-100]
+            self.mellist = self.mellist[:-100]
+        elif which_set == 'val':
+            self.txtlist = self.txtlist[-100:]
+            self.mellist = self.mellist[-100:]
+        else:
+            raise ValueError
+       
         
         self.dbname = 'ETRI'
         self.gen_lu = {'female': 0, 'male': 1}
