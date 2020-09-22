@@ -164,6 +164,7 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
             else:
                 reduced_val_loss = loss.item()
             val_loss += reduced_val_loss
+            break # TODO
         val_loss = val_loss / (i + 1)
 
     model.train()
@@ -316,6 +317,7 @@ if __name__ == '__main__':
     args.output_directory = set_savepath(args.message)
     hparams = create_hparams(args.hparams)
     hparams.message = args.message
+    hparams.output_directory = args.output_directory
 
     if args.gpu:
         torch.cuda.set_device(args.gpu)

@@ -5,6 +5,8 @@ from plotting_utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy
 from plotting_utils import plot_gate_outputs_to_numpy
 import wandb
 import os
+import numpy as np
+from PIL import Image
 
 
 class Tacotron2Logger(SummaryWriter):
@@ -58,11 +60,12 @@ class WandbLogger:
         wandb.config['hostname'] = os.uname()[1]
         wandb.config.update(hparams.values())
         wandb.watch(model)
+        self.outdir = hparams.output_directory
 
     def log_training(self, reduced_loss, grad_norm, learning_rate, duration,
                      iteration):
         log_dict = {
-            "training.loss": reduced_loss,
+            "loss/train": reduced_loss,
             "grad.norm": grad_norm,
             "learning.rate": learning_rate,
             "duration": duration,
@@ -72,7 +75,7 @@ class WandbLogger:
 
     def log_validation(self, reduced_loss, model, y, y_pred, iteration):
         log_dict = {
-                "validation.loss": reduced_loss,
+                "loss/val": reduced_loss,
                 }
 
         _, mel_outputs, gate_outputs, alignments = y_pred
@@ -80,16 +83,44 @@ class WandbLogger:
 
         # plot alignment, mel target and predicted, gate target and predicted
         idx = random.randint(0, alignments.size(0) - 1)
+
+        align = Image.fromarray(
+        plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T))
+        align.save(os.path.join(self.outdir, f'align_{iteration:08}.png'))
+
+        target = Image.fromarray(
+        plot_spectrogram_to_numpy(mel_targets[idx].data.cpu().numpy()))
+        target.save(os.path.join(self.outdir, f'target_{iteration:08}.png'))
+
+        output = Image.fromarray(
+        plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()))
+        output.save(os.path.join(self.outdir, f'output_{iteration:08}.png'))
+
+        gate = Image.fromarray(
+        plot_gate_outputs_to_numpy(
+        gate_targets[idx].data.cpu().numpy(),
+        torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()))
+        gate.save(os.path.join(self.outdir, f'gate_{iteration:08}.png'))
+
         log_dict.update({
                 "alignment":
-                    plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T),
+                    wandb.Image(
+                        Image.fromarray(
+                        plot_alignment_to_numpy(alignments[idx].data.cpu().numpy().T)),
+                        caption='att'),
                 "mel_target":
-                    plot_spectrogram_to_numpy(mel_targets[idx].data.cpu().numpy()),
+                    wandb.Image(Image.fromarray(
+                        plot_spectrogram_to_numpy(mel_targets[idx].data.cpu().numpy())),
+                        caption='att'),
                 "mel_predicted":
-                    plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy()),
+                    wandb.Image(Image.fromarray(
+                        plot_spectrogram_to_numpy(mel_outputs[idx].data.cpu().numpy())),
+                        caption='att'),
                 "gate":
+                    wandb.Image(Image.fromarray(
                     plot_gate_outputs_to_numpy(
                         gate_targets[idx].data.cpu().numpy(),
-                        torch.sigmoid(gate_outputs[idx]).data.cpu().numpy()),
+                        torch.sigmoid(gate_outputs[idx]).data.cpu().numpy())),
+                        caption='att'),
             })
         wandb.log(log_dict, step=iteration)

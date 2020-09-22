@@ -32,7 +32,7 @@ def to_gpu(x):
     return torch.autograd.Variable(x)
 
 def set_savepath(message):
-    today = time.strftime('%y%m%d%2M%2S%Z')
+    today = time.strftime('%y%m%d')
     savepath = join('result', '{}-{}'.format(today, message))
     if not exists(savepath):
         os.makedirs(savepath)
