@@ -36,6 +36,7 @@ def set_savepath(message):
     savepath = join('result', '{}-{}'.format(today, message))
     if not exists(savepath):
         os.makedirs(savepath)
+        os.system('cp -r *.py dataset {}'.format(savepath))
     elif message=='test':
         os.system("rm -rf {}/*".format(savepath))
     else:

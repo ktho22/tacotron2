@@ -164,7 +164,6 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
             else:
                 reduced_val_loss = loss.item()
             val_loss += reduced_val_loss
-            break # TODO
         val_loss = val_loss / (i + 1)
 
     model.train()
@@ -218,7 +217,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     if hparams.message == 'dryrun':
         os.environ['WANDB_MODE'] = 'dryrun'
 
-    wandb_logger = WandbLogger(hparams, model)
+    wandb_logger = WandbLogger(hparams, model, log_directory)
 
     # Load checkpoint if one exists
     iteration = 0

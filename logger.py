@@ -52,7 +52,7 @@ class Tacotron2Logger(SummaryWriter):
             iteration, dataformats='HWC')
 
 class WandbLogger:
-    def __init__(self, hparams, model):
+    def __init__(self, hparams, model, logdir):
         if hparams.message == 'dryrun':
             os.environ['WANDB_MODE'] = 'dryrun'
 
@@ -60,7 +60,7 @@ class WandbLogger:
         wandb.config['hostname'] = os.uname()[1]
         wandb.config.update(hparams.values())
         wandb.watch(model)
-        self.outdir = hparams.output_directory
+        self.outdir = logdir
 
     def log_training(self, reduced_loss, grad_norm, learning_rate, duration,
                      iteration):
